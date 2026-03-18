@@ -9,6 +9,7 @@ Type=simple
 User=root
 ExecStart=/opt/ffmpeg/bin/srt_to_udp_server /opt/ffmpeg/etc/srt_to_udp_server/config.ini
 ExecReload=/bin/kill -HUP $MAINPID
+KillMode=mixed
 Restart=on-failure
 RestartSec=10s
 StandardOutput=journal

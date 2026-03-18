@@ -1,4 +1,6 @@
 #include <iostream>
+#include <signal.h>
+#include <atomic>
 
 #include "INI.h"
 #include "NetBridge.h"
@@ -9,89 +11,181 @@
 #define MINOR_VERSION 0
 
 std::map<std::string, std::shared_ptr<NetBridge>> gBridges;
+std::string gConfigFilePath;
+std::atomic<bool> gReloadConfig(false);
+
+// Helper function to parse and add a config section
+bool addConfigSection(const INI &rConfigs, const std::string &sectionName, bool skipIfExists = false) {
+    try {
+        // Skip if this config section already exists and we're reloading
+        if (skipIfExists) {
+            for (auto &rBridge: gBridges) {
+                if (rBridge.first == sectionName) {
+                    return true;  // Already exists, skip
+                }
+            }
+        }
+        
+        NetBridge::Config lConfig;
+        lConfig.mListenPort = std::stoi(rConfigs[sectionName]["listen_port"]);
+        lConfig.mListenIp = rConfigs[sectionName]["listen_ip"];
+        lConfig.mOutPort = std::stoi(rConfigs[sectionName]["out_port"]);
+        lConfig.mOutIp = rConfigs[sectionName]["out_ip"];
+        lConfig.mPsk = rConfigs[sectionName]["key"];
+        lConfig.mReorder = std::stoi(rConfigs[sectionName]["reorder_distance"]);
+        
+        std::string latencyString = rConfigs[sectionName]["latency"];
+        lConfig.mLatency = !latencyString.empty() ? std::stoi(latencyString) : 1000;
+        
+        std::string singleSenderString = rConfigs[sectionName]["single_sender"];
+        lConfig.mSingleSender = !singleSenderString.empty() && singleSenderString == "true" ? true : false;
+        
+        lConfig.mStreamId = rConfigs[sectionName]["stream_id"];
+        std::cout << "Config " << sectionName << " stream_id: '" << lConfig.mStreamId << "'" << std::endl;
+        
+        std::string tagString = rConfigs[sectionName]["tag"];
+        if (!tagString.empty()) {
+            lConfig.mMode = NetBridge::Mode::MPSRTTS;
+            lConfig.mTag = std::stoi(tagString);
+        } else {
+            lConfig.mMode = NetBridge::Mode::MPEGTS;
+        }
+        
+        // Check if a bridge with the same listen_ip:listen_port already exists
+        auto existingBridgeIt = gBridges.end();
+        for (auto it = gBridges.begin(); it != gBridges.end(); ++it) {
+            if (it->second->mCurrentConfig.mListenIp == lConfig.mListenIp && 
+                it->second->mCurrentConfig.mListenPort == lConfig.mListenPort) {
+                existingBridgeIt = it;
+                break;
+            }
+        }
+        
+        if (existingBridgeIt != gBridges.end()) {
+            // Reuse existing bridge with addInterface for stream-based routing
+            existingBridgeIt->second->addInterface(lConfig);
+        } else {
+            // Create a new bridge and start the SRT server
+            auto newBridge = std::make_shared<NetBridge>();
+            if (!newBridge->startBridge(lConfig)) {
+                std::cout << "Failed starting bridge using config: " << sectionName << std::endl;
+                return false;
+            }
+            gBridges[sectionName] = newBridge;
+        }
+        return true;
+    } catch (const std::exception &e) {
+        std::cout << "Error parsing config section " << sectionName << ": " << e.what() << std::endl;
+        return false;
+    }
+}
+
+// Helper function to parse and add a flow section
+bool addFlowSection(const INI &rConfigs, const std::string &sectionName) {
+    try {
+        std::string lBindKey = rConfigs[sectionName]["bind_to"];
+        if (gBridges.find(lBindKey) == gBridges.end() || lBindKey.empty()) {
+            return true;  // Bridge doesn't exist yet, skip this flow
+        }
+        
+        NetBridge::Config lConfig;
+        lConfig.mOutPort = std::stoi(rConfigs[sectionName]["out_port"]);
+        lConfig.mOutIp = rConfigs[sectionName]["out_ip"];
+        lConfig.mStreamId = rConfigs[sectionName]["stream_id"];
+        std::cout << "Flow " << sectionName << " stream_id: '" << lConfig.mStreamId << "'" << std::endl;
+        
+        std::string tagString = rConfigs[sectionName]["tag"];
+        if (!tagString.empty()) {
+            lConfig.mMode = NetBridge::Mode::MPSRTTS;
+            lConfig.mTag = std::stoi(tagString);
+        } else {
+            std::cout << "Tag missing: " << sectionName << std::endl;
+            return false;
+        }
+        gBridges[lBindKey]->addInterface(lConfig);
+        return true;
+    } catch (const std::exception &e) {
+        std::cout << "Error parsing flow section " << sectionName << ": " << e.what() << std::endl;
+        return false;
+    }
+}
 
 bool startSystem(INI &rConfigs) {
+    bool success = true;
     for (auto &rSection: rConfigs.sections) {
         std::string sectionName = rSection.first;
         if (sectionName.find("config") != std::string::npos) {
-            NetBridge::Config lConfig;
-            //Config section. get all parameters
-            lConfig.mListenPort = std::stoi(rConfigs[rSection.first]["listen_port"]);
-            lConfig.mListenIp = rConfigs[rSection.first]["listen_ip"];
-            lConfig.mOutPort = std::stoi(rConfigs[rSection.first]["out_port"]);
-            lConfig.mOutIp = rConfigs[rSection.first]["out_ip"];
-            lConfig.mPsk = rConfigs[rSection.first]["key"];
-            lConfig.mReorder = std::stoi(rConfigs[rSection.first]["reorder_distance"]);
-            
-            std::string latencyString = rConfigs[rSection.first]["latency"];
-            lConfig.mLatency = !latencyString.empty() ? std::stoi(latencyString) : 1000;
-            
-            std::string singleSenderString = rConfigs[rSection.first]["single_sender"];
-            lConfig.mSingleSender = !singleSenderString.empty() && singleSenderString == "true" ? true : false;
-
-            // Parse optional stream_id for stream-based routing on the same port
-            lConfig.mStreamId = rConfigs[rSection.first]["stream_id"];
-            std::cout << "Config " << rSection.first << " stream_id: '" << lConfig.mStreamId << "'" << std::endl;
-
-            std::string tagString = rConfigs[rSection.first]["tag"];
-            if (!tagString.empty()) {
-                lConfig.mMode = NetBridge::Mode::MPSRTTS;
-                lConfig.mTag = std::stoi(tagString);
-            } else {
-                lConfig.mMode = NetBridge::Mode::MPEGTS;
-            }
-
-            // Check if a bridge with the same listen_ip:listen_port already exists
-            std::string bridgeKey = lConfig.mListenIp + ":" + std::to_string(lConfig.mListenPort);
-            auto existingBridgeIt = gBridges.end();
-            for (auto it = gBridges.begin(); it != gBridges.end(); ++it) {
-                if (it->second->mCurrentConfig.mListenIp == lConfig.mListenIp && 
-                    it->second->mCurrentConfig.mListenPort == lConfig.mListenPort) {
-                    existingBridgeIt = it;
-                    break;
-                }
-            }
-
-            if (existingBridgeIt != gBridges.end()) {
-                // Reuse existing bridge with addInterface for stream-based routing
-                existingBridgeIt->second->addInterface(lConfig);
-            } else {
-                // Create a new bridge and start the SRT server
-                auto newBridge = std::make_shared<NetBridge>();
-                if (!newBridge->startBridge(lConfig)) {
-                    std::cout << "Failed starting bridge using config: "  << rSection.first << std::endl;
-                    return false;
-                }
-                gBridges[rSection.first] = newBridge;
+            if (!addConfigSection(rConfigs, sectionName, false)) {
+                success = false;
             }
         } else if (sectionName.find("flow") != std::string::npos) {
-            std::string lBindKey = rConfigs[rSection.first]["bind_to"];
-            if ( gBridges.find(lBindKey) != gBridges.end() && !lBindKey.empty() ) {
-                NetBridge::Config lConfig;
-                lConfig.mOutPort = std::stoi(rConfigs[rSection.first]["out_port"]);
-                lConfig.mOutIp = rConfigs[rSection.first]["out_ip"];
-                
-                // Parse optional stream_id for stream-based routing
-                lConfig.mStreamId = rConfigs[rSection.first]["stream_id"];
-                std::cout << "Flow " << rSection.first << " stream_id: '" << lConfig.mStreamId << "'" << std::endl;
-                
-                std::string tagString = rConfigs[rSection.first]["tag"];
-                if (!tagString.empty()) {
-                    lConfig.mMode = NetBridge::Mode::MPSRTTS;
-                    lConfig.mTag = std::stoi(tagString);
-                } else {
-                    std::cout << "Tag missing: "  << rSection.first << std::endl;
-                    return false;
-                }
-                gBridges[lBindKey]->addInterface(lConfig);
+            if (!addFlowSection(rConfigs, sectionName)) {
+                success = false;
             }
         }
     }
-    return true;
+    return success;
 }
 
 
-void printUsage() {
+// Signal handler for SIGHUP to reload configuration
+void signalHandler(int signal) {
+    if (signal == SIGHUP) {
+        std::cout << "Received SIGHUP, will reload configuration at next check" << std::endl;
+        gReloadConfig = true;
+    }
+}
+
+// Reload configuration from file and add new interfaces/bridges
+bool reloadConfigFile() {
+    std::cout << "Reloading configuration from: " << gConfigFilePath << std::endl;
+    
+    INI ini(gConfigFilePath, true, INI::PARSE_COMMENTS_ALL | INI::PARSE_COMMENTS_SLASH | INI::PARSE_COMMENTS_HASH);
+    
+    if (ini.sections.size() < 2) {
+        std::cout << "Failed parsing configuration file during reload." << std::endl;
+        return false;
+    }
+    
+    bool reloadSuccess = true;
+    int newConfigsAdded = 0;
+    int newInterfacesAdded = 0;
+    
+    for (auto &rSection: ini.sections) {
+        std::string sectionName = rSection.first;
+        if (sectionName.find("config") != std::string::npos) {
+            // Skip if this config section already exists
+            bool alreadyExists = false;
+            for (auto &rBridge: gBridges) {
+                if (rBridge.first == sectionName) {
+                    alreadyExists = true;
+                    break;
+                }
+            }
+            
+            if (!alreadyExists) {
+                if (addConfigSection(ini, sectionName, true)) {
+                    newConfigsAdded++;
+                } else {
+                    reloadSuccess = false;
+                }
+            }
+        } else if (sectionName.find("flow") != std::string::npos) {
+            if (addFlowSection(ini, sectionName)) {
+                newInterfacesAdded++;
+            } else {
+                reloadSuccess = false;
+            }
+        }
+    }
+    
+    if (reloadSuccess) {
+        std::cout << "Configuration reload complete. Added " << newConfigsAdded << " new bridges and " 
+                  << newInterfacesAdded << " new interfaces." << std::endl;
+    }
+    
+    return reloadSuccess;
+}
     std::cout << "Usage:" << std::endl << std::endl;
     std::cout << "(Executable) configuration.ini" << std::endl;
 }
@@ -127,6 +221,9 @@ int main(int argc, char *argv[]) {
         return EXIT_SUCCESS;
     }
 
+    // Store config file path globally for reload
+    gConfigFilePath = lCommand;
+
     std::cout << "Parsing configuration in file: " << lCommand << std::endl;
     INI ini(lCommand, true, INI::PARSE_COMMENTS_ALL | INI::PARSE_COMMENTS_SLASH | INI::PARSE_COMMENTS_HASH);
 
@@ -151,8 +248,20 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
+    // Register SIGHUP signal handler for config reload
+    signal(SIGHUP, signalHandler);
+    std::cout << "SIGHUP handler registered. Use 'systemctl reload srt-to-udp-server' to reload config." << std::endl;
+
     bool running = true;
     while (running) {
+        // Check if config reload was requested
+        if (gReloadConfig) {
+            gReloadConfig = false;
+            if (!reloadConfigFile()) {
+                std::cout << "Warning: Configuration reload had errors, but continuing with current config." << std::endl;
+            }
+        }
+        
         std::this_thread::sleep_for(std::chrono::seconds(1));
         uint64_t lConnectionCounter = 1;
         std::cout << std::endl;
