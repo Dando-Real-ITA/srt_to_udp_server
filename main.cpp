@@ -186,6 +186,8 @@ bool reloadConfigFile() {
     
     return reloadSuccess;
 }
+
+void printUsage() {
     std::cout << "Usage:" << std::endl << std::endl;
     std::cout << "(Executable) configuration.ini" << std::endl;
 }
