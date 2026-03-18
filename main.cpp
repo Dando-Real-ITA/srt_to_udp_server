@@ -15,7 +15,7 @@ std::string gConfigFilePath;
 std::atomic<bool> gReloadConfig(false);
 
 // Helper function to parse and add a config section
-bool addConfigSection(const INI &rConfigs, const std::string &sectionName, bool skipIfExists = false) {
+bool addConfigSection(INI &rConfigs, const std::string &sectionName, bool skipIfExists = false) {
     try {
         // Skip if this config section already exists and we're reloading
         if (skipIfExists) {
@@ -81,7 +81,7 @@ bool addConfigSection(const INI &rConfigs, const std::string &sectionName, bool 
 }
 
 // Helper function to parse and add a flow section
-bool addFlowSection(const INI &rConfigs, const std::string &sectionName) {
+bool addFlowSection(INI &rConfigs, const std::string &sectionName) {
     try {
         std::string lBindKey = rConfigs[sectionName]["bind_to"];
         if (gBridges.find(lBindKey) == gBridges.end() || lBindKey.empty()) {
