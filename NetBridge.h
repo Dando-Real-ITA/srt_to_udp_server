@@ -9,6 +9,11 @@
 #include "kissnet.hpp"
 #define MTU 1456 //SRT-max
 
+// Helper struct to store connection-specific data
+struct ConnectionContext {
+    std::string streamId;
+};
+
 class NetBridge {
 public:
     enum Mode: uint8_t {

@@ -33,7 +33,25 @@ std::shared_ptr<SRTNet::NetworkConnection> NetBridge::validateConnection(struct 
     }
 
     auto a1 = std::make_shared<SRTNet::NetworkConnection>();
-   // a1->object = std::make_shared<MyClass>();
+    
+    // Extract stream ID from the SRT socket
+    char streamIdBuffer[512];
+    int streamIdLen = sizeof(streamIdBuffer);
+    if (srt_getsockopt(lNewSocket, 0, SRTO_STREAMID, streamIdBuffer, &streamIdLen) == SRT_SUCCESS) {
+        std::string streamId(streamIdBuffer, streamIdLen);
+        std::cout << "Client stream ID: '" << streamId << "'" << std::endl;
+        
+        // Store stream ID in connection context
+        auto ctx = std::make_shared<ConnectionContext>();
+        ctx->streamId = streamId;
+        a1->object = ctx;
+    } else {
+        std::cout << "Could not retrieve stream ID from socket" << std::endl;
+        auto ctx = std::make_shared<ConnectionContext>();
+        ctx->streamId = "";
+        a1->object = ctx;
+    }
+    
     return a1;
 }
 
@@ -46,10 +64,15 @@ void NetBridge::handleClientDisconnect(std::shared_ptr<SRTNet::NetworkConnection
 bool NetBridge::handleDataMPEGTS(std::unique_ptr <std::vector<uint8_t>> &rContent, SRT_MSGCTRL &rMsgCtrl, std::shared_ptr<SRTNet::NetworkConnection> lCtx, SRTSOCKET lClientHandle) {
     mPacketCounter++;
     
-    // Extract stream ID from message control if available
-    std::string streamId = (rMsgCtrl.grpdata != nullptr && rMsgCtrl.grpdata_size > 0) ? 
-        std::string((const char*)rMsgCtrl.grpdata, rMsgCtrl.grpdata_size) : "";
-    std::cout << "handleDataMPEGTS: detected streamId='" << streamId << "' (size=" << rMsgCtrl.grpdata_size << ")" << std::endl;
+    // Extract stream ID from connection context
+    std::string streamId = "";
+    if (lCtx && lCtx->object) {
+        auto ctx = std::dynamic_pointer_cast<ConnectionContext>(lCtx->object);
+        if (ctx) {
+            streamId = ctx->streamId;
+        }
+    }
+    std::cout << "handleDataMPEGTS: client streamId='" << streamId << "' (size=" << rContent->size() << ")" << std::endl;
     
     // Log configured connections for comparison
     for (size_t i = 0; i < mConnections.size(); i++) {
