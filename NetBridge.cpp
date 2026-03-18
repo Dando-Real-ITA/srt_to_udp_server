@@ -66,10 +66,14 @@ bool NetBridge::handleDataMPEGTS(std::unique_ptr <std::vector<uint8_t>> &rConten
     
     // Extract stream ID from connection context
     std::string streamId = "";
-    if (lCtx && lCtx->mObject) {
-        auto ctx = std::dynamic_pointer_cast<ConnectionContext>(lCtx->mObject);
-        if (ctx) {
-            streamId = ctx->streamId;
+    if (lCtx) {
+        try {
+            auto ctx = std::any_cast<std::shared_ptr<ConnectionContext>>(lCtx->mObject);
+            if (ctx) {
+                streamId = ctx->streamId;
+            }
+        } catch (const std::bad_any_cast&) {
+            // mObject doesn't contain ConnectionContext, that's okay
         }
     }
     std::cout << "handleDataMPEGTS: client streamId='" << streamId << "' (size=" << rContent->size() << ")" << std::endl;
