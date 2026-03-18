@@ -45,8 +45,24 @@ void NetBridge::handleClientDisconnect(std::shared_ptr<SRTNet::NetworkConnection
 //Data callback in MPEGTS mode.
 bool NetBridge::handleDataMPEGTS(std::unique_ptr <std::vector<uint8_t>> &rContent, SRT_MSGCTRL &rMsgCtrl, std::shared_ptr<SRTNet::NetworkConnection> lCtx, SRTSOCKET lClientHandle) {
     mPacketCounter++;
-    //We should test if sending UDP works..
-    mConnections[0].mNetOut->send((const std::byte *)rContent->data(), rContent->size());
+    
+    // Extract stream ID from message control if available
+    std::string streamId = (rMsgCtrl.grpdata != nullptr && rMsgCtrl.grpdata_size > 0) ? 
+        std::string((const char*)rMsgCtrl.grpdata, rMsgCtrl.grpdata_size) : "";
+    
+    // Route packet to the correct UDP destination based on stream ID
+    for (auto &rConnection: mConnections) {
+        // Match by stream ID if specified, otherwise use first connection (backward compatible)
+        if (rConnection.mStreamId.empty() || rConnection.mStreamId == streamId) {
+            rConnection.mNetOut->send((const std::byte *)rContent->data(), rContent->size());
+            return true;
+        }
+    }
+    
+    // Fallback: send to first connection if no stream ID match
+    if (!mConnections.empty()) {
+        mConnections[0].mNetOut->send((const std::byte *)rContent->data(), rContent->size());
+    }
     return true;
 }
 
@@ -112,12 +128,13 @@ bool NetBridge::startBridge(Config &rConfig) {
         return false;
     }
 
-    //Add the out put connection
+    //Add the output connection
     Connection lConnection;
     lConnection.mNetOut = std::make_shared<kissnet::udp_socket>(kissnet::endpoint(rConfig.mOutIp, rConfig.mOutPort));
     if (rConfig.mMode == Mode::MPSRTTS) {
         lConnection.tag = rConfig.mTag;
     }
+    lConnection.mStreamId = rConfig.mStreamId;  // Store stream ID for MPEGTS stream-based routing
     mConnections.push_back(lConnection);
     return true;
 }
@@ -127,13 +144,14 @@ void NetBridge::stopBridge() {
 }
 
 bool NetBridge::addInterface(Config &rConfig) {
-    if (mCurrentMode != Mode::MPSRTTS) {
+    if (mCurrentMode != Mode::MPSRTTS && mCurrentMode != Mode::MPEGTS) {
         return false;
     }
-    //Add the out put connection
+    //Add the output connection
     Connection lConnection;
     lConnection.mNetOut = std::make_shared<kissnet::udp_socket>(kissnet::endpoint(rConfig.mOutIp, rConfig.mOutPort));
     lConnection.tag = rConfig.mTag;
+    lConnection.mStreamId = rConfig.mStreamId;  // Store stream ID for routing
     mConnections.push_back(lConnection);
     return true;
 }

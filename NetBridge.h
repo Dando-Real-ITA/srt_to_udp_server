@@ -20,6 +20,7 @@ public:
     struct Connection {
         std::shared_ptr<kissnet::udp_socket> mNetOut = nullptr;
         uint8_t tag = 0;
+        std::string mStreamId = "";  // SRT stream ID for routing
     };
 
     struct Stats {
@@ -38,6 +39,7 @@ public:
         uint8_t mTag = 0;
         int mLatency = 1000;
         bool mSingleSender = false;
+        std::string mStreamId = "";  // SRT stream ID (for stream-based routing)
     };
 
     bool startBridge(Config &rConfig);

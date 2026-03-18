@@ -29,6 +29,9 @@ bool startSystem(INI &rConfigs) {
             std::string singleSenderString = rConfigs[rSection.first]["single_sender"];
             lConfig.mSingleSender = !singleSenderString.empty() && singleSenderString == "true" ? true : false;
 
+            // Parse optional stream_id for stream-based routing on the same port
+            lConfig.mStreamId = rConfigs[rSection.first]["stream_id"];
+
             std::string tagString = rConfigs[rSection.first]["tag"];
             if (!tagString.empty()) {
                 lConfig.mMode = NetBridge::Mode::MPSRTTS;
@@ -37,18 +40,41 @@ bool startSystem(INI &rConfigs) {
                 lConfig.mMode = NetBridge::Mode::MPEGTS;
             }
 
-            auto newBridge = std::make_shared<NetBridge>();
-            if (!newBridge->startBridge(lConfig)) {
-                std::cout << "Failed starting bridge using config: "  << rSection.first << std::endl;
-                return false;
+            // Check if a bridge with the same listen_ip:listen_port already exists
+            std::string bridgeKey = lConfig.mListenIp + ":" + std::to_string(lConfig.mListenPort);
+            auto existingBridge = gBridges.begin();
+            bool bridgeExists = false;
+            for (auto &bridge : gBridges) {
+                if (bridge.second->mCurrentConfig.mListenIp == lConfig.mListenIp && 
+                    bridge.second->mCurrentConfig.mListenPort == lConfig.mListenPort) {
+                    existingBridge = bridge;
+                    bridgeExists = true;
+                    break;
+                }
             }
-            gBridges[rSection.first] = newBridge;
+
+            if (bridgeExists) {
+                // Reuse existing bridge with addInterface for stream-based routing
+                existingBridge->second->addInterface(lConfig);
+            } else {
+                // Create a new bridge and start the SRT server
+                auto newBridge = std::make_shared<NetBridge>();
+                if (!newBridge->startBridge(lConfig)) {
+                    std::cout << "Failed starting bridge using config: "  << rSection.first << std::endl;
+                    return false;
+                }
+                gBridges[rSection.first] = newBridge;
+            }
         } else if (sectionName.find("flow") != std::string::npos) {
             std::string lBindKey = rConfigs[rSection.first]["bind_to"];
             if ( gBridges.find(lBindKey) != gBridges.end() && !lBindKey.empty() ) {
                 NetBridge::Config lConfig;
                 lConfig.mOutPort = std::stoi(rConfigs[rSection.first]["out_port"]);
                 lConfig.mOutIp = rConfigs[rSection.first]["out_ip"];
+                
+                // Parse optional stream_id for stream-based routing
+                lConfig.mStreamId = rConfigs[rSection.first]["stream_id"];
+                
                 std::string tagString = rConfigs[rSection.first]["tag"];
                 if (!tagString.empty()) {
                     lConfig.mMode = NetBridge::Mode::MPSRTTS;
