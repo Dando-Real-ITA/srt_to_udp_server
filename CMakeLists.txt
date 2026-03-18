@@ -16,7 +16,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG")
 include(ExternalProject)
 ExternalProject_Add(project_cppsrtwrapp
         GIT_REPOSITORY https://github.com/Dando-Real-ITA/cppSRTWrapper.git
-        GIT_TAG origin/main
+        GIT_TAG origin/master
         SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/srtwrap
         BINARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/srtwrap
         GIT_PROGRESS 1
