@@ -31,6 +31,7 @@ bool startSystem(INI &rConfigs) {
 
             // Parse optional stream_id for stream-based routing on the same port
             lConfig.mStreamId = rConfigs[rSection.first]["stream_id"];
+            std::cout << "Config " << rSection.first << " stream_id: '" << lConfig.mStreamId << "'" << std::endl;
 
             std::string tagString = rConfigs[rSection.first]["tag"];
             if (!tagString.empty()) {
@@ -72,6 +73,7 @@ bool startSystem(INI &rConfigs) {
                 
                 // Parse optional stream_id for stream-based routing
                 lConfig.mStreamId = rConfigs[rSection.first]["stream_id"];
+                std::cout << "Flow " << rSection.first << " stream_id: '" << lConfig.mStreamId << "'" << std::endl;
                 
                 std::string tagString = rConfigs[rSection.first]["tag"];
                 if (!tagString.empty()) {

@@ -49,6 +49,12 @@ bool NetBridge::handleDataMPEGTS(std::unique_ptr <std::vector<uint8_t>> &rConten
     // Extract stream ID from message control if available
     std::string streamId = (rMsgCtrl.grpdata != nullptr && rMsgCtrl.grpdata_size > 0) ? 
         std::string((const char*)rMsgCtrl.grpdata, rMsgCtrl.grpdata_size) : "";
+    std::cout << "handleDataMPEGTS: detected streamId='" << streamId << "' (size=" << rMsgCtrl.grpdata_size << ")" << std::endl;
+    
+    // Log configured connections for comparison
+    for (size_t i = 0; i < mConnections.size(); i++) {
+        std::cout << "  Connection " << i << ": configured streamId='" << mConnections[i].mStreamId << "'" << std::endl;
+    }
     
     // Route packet to the correct UDP destination based on stream ID
     for (auto &rConnection: mConnections) {
