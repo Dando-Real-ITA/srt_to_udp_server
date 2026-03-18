@@ -260,7 +260,7 @@ int main() {
 
     gSRTNetClient.receivedData=std::bind(&handleDataClient, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
     auto clientConnection=std::make_shared<SRTNet::NetworkConnection>();
-    if (!gSRTNetClient.startClient("127.0.0.1", 8000, 16, 1000, 100,clientConnection, 1456,"th15i$4k3y")) {
+    if (!gSRTNetClient.startClient("127.0.0.1", 8000, 16, 1000, 100, clientConnection, 1456, 5000, "th15i$4k3y")) {
         std::cout << "SRT client1 failed starting." << std::endl;
         return EXIT_FAILURE;
     }

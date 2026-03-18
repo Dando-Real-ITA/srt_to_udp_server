@@ -99,7 +99,7 @@ bool NetBridge::startBridge(Config &rConfig) {
         mSRTServer.receivedData = std::bind(&NetBridge::handleDataMPSRTTS, this, std::placeholders::_1,
                                             std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
     }
-    if (!mSRTServer.startServer(rConfig.mListenIp, rConfig.mListenPort, rConfig.mReorder, 1000, 100, MTU, rConfig.mPsk)) {
+    if (!mSRTServer.startServer(rConfig.mListenIp, rConfig.mListenPort, rConfig.mReorder, 1000, 100, MTU, 5000, rConfig.mPsk)) {
         std::cout << "SRT Server failed to start." << std::endl;
         return false;
     }
