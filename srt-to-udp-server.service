@@ -1,0 +1,20 @@
+[Unit]
+Description=SRT to UDP Server
+Documentation=https://github.com/Dando-Real-ITA/srt_to_udp_server
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/opt/ffmpeg/bin/srt_to_udp_server /opt/ffmpeg/etc/srt_to_udp_server/config.ini
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=10s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=srt-to-udp-server
+
+[Install]
+WantedBy=multi-user.target
+

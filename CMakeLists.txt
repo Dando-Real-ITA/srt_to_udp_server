@@ -80,3 +80,7 @@ install(DIRECTORY restapi/
         DESTINATION share/srt_to_udp_server/restapi
         FILES_MATCHING PATTERN "*.html" PATTERN "*.js" PATTERN "*.css")
 
+# Install systemd service file
+install(FILES srt-to-udp-server.service
+        DESTINATION lib/systemd/system)
+
