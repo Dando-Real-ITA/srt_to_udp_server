@@ -44,12 +44,12 @@ std::shared_ptr<SRTNet::NetworkConnection> NetBridge::validateConnection(struct 
         // Store stream ID in connection context
         auto ctx = std::make_shared<ConnectionContext>();
         ctx->streamId = streamId;
-        a1->object = ctx;
+        a1->mObject = ctx;
     } else {
         std::cout << "Could not retrieve stream ID from socket" << std::endl;
         auto ctx = std::make_shared<ConnectionContext>();
         ctx->streamId = "";
-        a1->object = ctx;
+        a1->mObject = ctx;
     }
     
     return a1;
@@ -66,8 +66,8 @@ bool NetBridge::handleDataMPEGTS(std::unique_ptr <std::vector<uint8_t>> &rConten
     
     // Extract stream ID from connection context
     std::string streamId = "";
-    if (lCtx && lCtx->object) {
-        auto ctx = std::dynamic_pointer_cast<ConnectionContext>(lCtx->object);
+    if (lCtx && lCtx->mObject) {
+        auto ctx = std::dynamic_pointer_cast<ConnectionContext>(lCtx->mObject);
         if (ctx) {
             streamId = ctx->streamId;
         }
