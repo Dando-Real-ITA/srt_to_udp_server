@@ -62,3 +62,21 @@ ELSE()
     target_link_libraries(mpsrtts_test srtnet ${CMAKE_CURRENT_SOURCE_DIR}/srtwrap/srt/libsrt.a ${OPENSSL_LIBRARIES} Threads::Threads)
 ENDIF()
 
+#Install targets
+install(TARGETS srt_to_udp_server
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib)
+
+install(TARGETS mpsrtts_test
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib)
+
+install(FILES config.ini
+        DESTINATION etc/srt_to_udp_server)
+
+install(DIRECTORY restapi/
+        DESTINATION share/srt_to_udp_server/restapi
+        FILES_MATCHING PATTERN "*.html" PATTERN "*.js" PATTERN "*.css")
+
