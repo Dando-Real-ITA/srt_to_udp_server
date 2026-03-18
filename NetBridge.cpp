@@ -76,12 +76,6 @@ bool NetBridge::handleDataMPEGTS(std::unique_ptr <std::vector<uint8_t>> &rConten
             // mObject doesn't contain ConnectionContext, that's okay
         }
     }
-    std::cout << "handleDataMPEGTS: client streamId='" << streamId << "' (size=" << rContent->size() << ")" << std::endl;
-    
-    // Log configured connections for comparison
-    for (size_t i = 0; i < mConnections.size(); i++) {
-        std::cout << "  Connection " << i << ": configured streamId='" << mConnections[i].mStreamId << "'" << std::endl;
-    }
     
     // Route packet to the correct UDP destination based on stream ID
     for (auto &rConnection: mConnections) {
