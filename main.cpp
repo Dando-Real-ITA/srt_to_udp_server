@@ -22,8 +22,12 @@ bool startSystem(INI &rConfigs) {
             lConfig.mOutIp = rConfigs[rSection.first]["out_ip"];
             lConfig.mPsk = rConfigs[rSection.first]["key"];
             lConfig.mReorder = std::stoi(rConfigs[rSection.first]["reorder_distance"]);
-            lConfig.mLatency = std::stoi(rConfigs[rSection.first]["latency"]);
-            lConfig.mSingleSender = rConfigs[rSection.first]["single_sender"] == "true" ? true : false;
+            
+            std::string latencyString = rConfigs[rSection.first]["latency"];
+            lConfig.mLatency = !latencyString.empty() ? std::stoi(latencyString) : 1000;
+            
+            std::string singleSenderString = rConfigs[rSection.first]["single_sender"];
+            lConfig.mSingleSender = !singleSenderString.empty() && singleSenderString == "true" ? true : false;
 
             std::string tagString = rConfigs[rSection.first]["tag"];
             if (!tagString.empty()) {

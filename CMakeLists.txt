@@ -15,7 +15,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG")
 #Include cppSRTWrapper
 include(ExternalProject)
 ExternalProject_Add(project_cppsrtwrapp
-        GIT_REPOSITORY https://github.com/andersc/cppSRTWrapper.git
+        GIT_REPOSITORY https://github.com/Dando-Real-ITA/cppSRTWrapper.git
         SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/srtwrap
         BINARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/srtwrap
         GIT_PROGRESS 1
@@ -73,8 +73,11 @@ install(TARGETS mpsrtts_test
         LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib)
 
-install(FILES config.ini
-        DESTINATION etc/srt_to_udp_server)
+install(CODE "
+    if(NOT EXISTS \"\${CMAKE_INSTALL_PREFIX}/etc/srt_to_udp_server/config.ini\")
+        file(INSTALL \"${CMAKE_CURRENT_SOURCE_DIR}/config.ini\" DESTINATION \"\${CMAKE_INSTALL_PREFIX}/etc/srt_to_udp_server\")
+    endif()
+")
 
 install(DIRECTORY restapi/
         DESTINATION share/srt_to_udp_server/restapi
