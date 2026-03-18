@@ -42,20 +42,18 @@ bool startSystem(INI &rConfigs) {
 
             // Check if a bridge with the same listen_ip:listen_port already exists
             std::string bridgeKey = lConfig.mListenIp + ":" + std::to_string(lConfig.mListenPort);
-            auto existingBridge = gBridges.begin();
-            bool bridgeExists = false;
-            for (auto &bridge : gBridges) {
-                if (bridge.second->mCurrentConfig.mListenIp == lConfig.mListenIp && 
-                    bridge.second->mCurrentConfig.mListenPort == lConfig.mListenPort) {
-                    existingBridge = bridge;
-                    bridgeExists = true;
+            auto existingBridgeIt = gBridges.end();
+            for (auto it = gBridges.begin(); it != gBridges.end(); ++it) {
+                if (it->second->mCurrentConfig.mListenIp == lConfig.mListenIp && 
+                    it->second->mCurrentConfig.mListenPort == lConfig.mListenPort) {
+                    existingBridgeIt = it;
                     break;
                 }
             }
 
-            if (bridgeExists) {
+            if (existingBridgeIt != gBridges.end()) {
                 // Reuse existing bridge with addInterface for stream-based routing
-                existingBridge->second->addInterface(lConfig);
+                existingBridgeIt->second->addInterface(lConfig);
             } else {
                 // Create a new bridge and start the SRT server
                 auto newBridge = std::make_shared<NetBridge>();
