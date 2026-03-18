@@ -5,7 +5,7 @@
 #include "NetBridge.h"
 
 //Return a connection object. (Return nullptr if you don't want to connect to that client)
-std::shared_ptr<SRTNet::NetworkConnection> NetBridge::validateConnection(struct sockaddr &rSin, SRTSOCKET lNewSocket) {
+std::shared_ptr<SRTNet::NetworkConnection> NetBridge::validateConnection(struct sockaddr &rSin, SRTSOCKET lNewSocket, std::shared_ptr<SRTNet::NetworkConnection> &rCtx) {
 
     char addrIPv6[INET6_ADDRSTRLEN];
 
@@ -35,6 +35,11 @@ std::shared_ptr<SRTNet::NetworkConnection> NetBridge::validateConnection(struct 
     auto a1 = std::make_shared<SRTNet::NetworkConnection>();
    // a1->object = std::make_shared<MyClass>();
     return a1;
+}
+
+//Handle client disconnect
+void NetBridge::handleClientDisconnect(std::shared_ptr<SRTNet::NetworkConnection>& ctx, SRTSOCKET socket) {
+    std::cout << "Client disconnected from socket " << socket << std::endl;
 }
 
 //Data callback in MPEGTS mode.
@@ -91,7 +96,10 @@ bool NetBridge::startBridge(Config &rConfig) {
     mPacketCounter = 0;
 
     //Start the SRT server
-    mSRTServer.clientConnected=std::bind(&NetBridge::validateConnection, this, std::placeholders::_1, std::placeholders::_2);
+    mSRTServer.clientConnected = std::bind(&NetBridge::validateConnection, this, 
+        std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+    mSRTServer.clientDisconnected = std::bind(&NetBridge::handleClientDisconnect, this,
+        std::placeholders::_1, std::placeholders::_2);
     if (rConfig.mMode == Mode::MPEGTS) {
         mSRTServer.receivedData = std::bind(&NetBridge::handleDataMPEGTS, this, std::placeholders::_1,
                                             std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
