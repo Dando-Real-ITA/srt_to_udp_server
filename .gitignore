@@ -4,3 +4,4 @@ cmake-build-t4debug/
 srtwrap/
 build/
 gwtst.ini
+.vscode/
