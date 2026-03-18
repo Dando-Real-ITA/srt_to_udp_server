@@ -36,6 +36,8 @@ public:
         uint16_t mOutPort = 0;
         Mode mMode = Mode::Unknown;
         uint8_t mTag = 0;
+        int mLatency = 1000;
+        bool mSingleSender = false;
     };
 
     bool startBridge(Config &rConfig);
