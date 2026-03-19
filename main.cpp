@@ -10,22 +10,20 @@
 #define MAJOR_VERSION 1
 #define MINOR_VERSION 0
 
-std::map<std::string, std::shared_ptr<NetBridge>> gBridges;
+std::map<std::string, std::shared_ptr<NetBridge>> gSectionBridges;  // section → bridge
+std::map<std::pair<std::string, uint16_t>, std::shared_ptr<NetBridge>> gBridgesByEndpoint; // (ip:port) → bridge
 std::string gConfigFilePath;
 std::atomic<bool> gReloadConfig(false);
 
 // Helper function to parse and add a config section
-bool addConfigSection(INI &rConfigs, const std::string &sectionName, bool skipIfExists = false) {
+bool addConfigSection(INI &rConfigs, const std::string &sectionName) {
     try {
-        // Skip if this config section already exists and we're reloading
-        if (skipIfExists) {
-            for (auto &rBridge: gBridges) {
-                if (rBridge.first == sectionName) {
-                    return true;  // Already exists, skip
-                }
-            }
+        // Step 1: Check if config (by sectionName) already exists
+        if (gSectionBridges.find(sectionName) != gSectionBridges.end()) {
+            return true;  // Section already exists, skip it
         }
         
+        // Step 2: Parse the config section
         NetBridge::Config lConfig;
         lConfig.mListenPort = std::stoi(rConfigs[sectionName]["listen_port"]);
         lConfig.mListenIp = rConfigs[sectionName]["listen_ip"];
@@ -51,28 +49,32 @@ bool addConfigSection(INI &rConfigs, const std::string &sectionName, bool skipIf
             lConfig.mMode = NetBridge::Mode::MPEGTS;
         }
         
-        // Check if a bridge with the same listen_ip:listen_port already exists
-        auto existingBridgeIt = gBridges.end();
-        for (auto it = gBridges.begin(); it != gBridges.end(); ++it) {
-            if (it->second->mCurrentConfig.mListenIp == lConfig.mListenIp && 
-                it->second->mCurrentConfig.mListenPort == lConfig.mListenPort) {
-                existingBridgeIt = it;
-                break;
-            }
+        // Step 3: Find bridge by listen_ip:listen_port
+        auto endpointKey = std::make_pair(lConfig.mListenIp, lConfig.mListenPort);
+        auto bridgeIt = gBridgesByEndpoint.find(endpointKey);
+        std::shared_ptr<NetBridge> targetBridge = nullptr;
+        
+        if (bridgeIt != gBridgesByEndpoint.end()) {
+            targetBridge = bridgeIt->second;
         }
         
-        if (existingBridgeIt != gBridges.end()) {
-            // Reuse existing bridge with addInterface for stream-based routing
-            existingBridgeIt->second->addInterface(lConfig);
-        } else {
+        // Step 4: If bridge does not exist, create it. Otherwise, reuse it.
+        if (targetBridge == nullptr) {
             // Create a new bridge and start the SRT server
             auto newBridge = std::make_shared<NetBridge>();
             if (!newBridge->startBridge(lConfig)) {
                 std::cout << "Failed starting bridge using config: " << sectionName << std::endl;
                 return false;
             }
-            gBridges[sectionName] = newBridge;
+            targetBridge = newBridge;
+            gBridgesByEndpoint[endpointKey] = targetBridge;
+        } else {
+            // Bridge exists, add this config as an interface
+            targetBridge->addInterface(lConfig);
         }
+        
+        // Step 5: Store the config mapping for this sectionName
+        gSectionBridges[sectionName] = targetBridge;
         return true;
     } catch (const std::exception &e) {
         std::cout << "Error parsing config section " << sectionName << ": " << e.what() << std::endl;
@@ -84,7 +86,7 @@ bool addConfigSection(INI &rConfigs, const std::string &sectionName, bool skipIf
 bool addFlowSection(INI &rConfigs, const std::string &sectionName) {
     try {
         std::string lBindKey = rConfigs[sectionName]["bind_to"];
-        if (gBridges.find(lBindKey) == gBridges.end() || lBindKey.empty()) {
+        if (gSectionBridges.find(lBindKey) == gSectionBridges.end() || lBindKey.empty()) {
             return true;  // Bridge doesn't exist yet, skip this flow
         }
         
@@ -102,7 +104,7 @@ bool addFlowSection(INI &rConfigs, const std::string &sectionName) {
             std::cout << "Tag missing: " << sectionName << std::endl;
             return false;
         }
-        gBridges[lBindKey]->addInterface(lConfig);
+        gSectionBridges[lBindKey]->addInterface(lConfig);
         return true;
     } catch (const std::exception &e) {
         std::cout << "Error parsing flow section " << sectionName << ": " << e.what() << std::endl;
@@ -115,7 +117,7 @@ bool startSystem(INI &rConfigs) {
     for (auto &rSection: rConfigs.sections) {
         std::string sectionName = rSection.first;
         if (sectionName.find("config") != std::string::npos) {
-            if (!addConfigSection(rConfigs, sectionName, false)) {
+            if (!addConfigSection(rConfigs, sectionName)) {
                 success = false;
             }
         } else if (sectionName.find("flow") != std::string::npos) {
@@ -156,7 +158,7 @@ bool reloadConfigFile() {
         if (sectionName.find("config") != std::string::npos) {
             // Skip if this config section already exists
             bool alreadyExists = false;
-            for (auto &rBridge: gBridges) {
+            for (auto &rBridge: gSectionBridges) {
                 if (rBridge.first == sectionName) {
                     alreadyExists = true;
                     break;
@@ -164,7 +166,7 @@ bool reloadConfigFile() {
             }
             
             if (!alreadyExists) {
-                if (addConfigSection(ini, sectionName, true)) {
+                if (addConfigSection(ini, sectionName)) {
                     newConfigsAdded++;
                 } else {
                     reloadSuccess = false;
@@ -196,13 +198,14 @@ json getStats(std::string cmdString) {
     json j;
     if (cmdString == "dumpall") {
         uint64_t lConnectionCounter = 1;
-        for (auto &rBridge: gBridges) {
-            NetBridge::Stats lStats=rBridge.second->getStats();
+        for (auto &rBridge: gBridgesByEndpoint) {
+            NetBridge::Stats lStats = rBridge.second->getStats();
             std::ostringstream lHandle;
             lHandle << "connection" << unsigned(lConnectionCounter);
             j[lHandle.str().c_str()]["pkt_cnt"] = lStats.mPacketCounter;
             j[lHandle.str().c_str()]["clnt_cnt"] = lStats.mConnections;
-            j[lHandle.str().c_str()]["net_port"] = rBridge.second->mCurrentConfig.mListenPort;
+            j[lHandle.str().c_str()]["net_ip"] = rBridge.first.first;
+            j[lHandle.str().c_str()]["net_port"] = rBridge.first.second;
             lConnectionCounter++;
         }
     }
@@ -267,10 +270,10 @@ int main(int argc, char *argv[]) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
         uint64_t lConnectionCounter = 1;
         std::cout << std::endl;
-        for (auto &rBridge: gBridges) {
+        for (auto &rBridge: gBridgesByEndpoint) {
             NetBridge::Stats lStats=rBridge.second->getStats();
             std::cout << "Connection " << unsigned(lConnectionCounter);
-            std::cout << " Port: " << unsigned(rBridge.second->mCurrentConfig.mListenPort);
+            std::cout << " Port: " << unsigned(rBridge.first.second);
             std::cout << " Clients: " << unsigned(lStats.mConnections);
             std::cout << " packetCounter: " << unsigned(lStats.mPacketCounter) << std::endl;
             lConnectionCounter ++;

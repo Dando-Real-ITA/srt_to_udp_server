@@ -8,7 +8,7 @@
 #include "NetBridge.h"
 
 
-std::map<std::string, std::shared_ptr<NetBridge>> gBridges;
+std::map<std::string, std::shared_ptr<NetBridge>> gSectionBridges;
 
 //Create the client
 SRTNet gSRTNetClient;
@@ -43,10 +43,10 @@ bool startSystem(INI &rConfigs) {
                 std::cout << "Failed starting bridge using config: "  << rSection.first << std::endl;
                 return false;
             }
-            gBridges[rSection.first] = newBridge;
+            gSectionBridges[rSection.first] = newBridge;
         } else if (sectionName.find("flow") != std::string::npos) {
             std::string lBindKey = rConfigs[rSection.first]["bind_to"];
-            if ( gBridges.find(lBindKey) != gBridges.end() && !lBindKey.empty() ) {
+            if ( gSectionBridges.find(lBindKey) != gSectionBridges.end() && !lBindKey.empty() ) {
                 NetBridge::Config lConfig;
                 lConfig.mOutPort = std::stoi(rConfigs[rSection.first]["out_port"]);
                 lConfig.mOutIp = rConfigs[rSection.first]["out_ip"];
@@ -60,7 +60,7 @@ bool startSystem(INI &rConfigs) {
                     return false;
                 }
 
-                gBridges[lBindKey]->addInterface(lConfig);
+                gSectionBridges[lBindKey]->addInterface(lConfig);
             }
         }
     }
@@ -275,7 +275,7 @@ int main() {
         std::this_thread::sleep_for(std::chrono::seconds(1));
         uint64_t lConnectionCounter = 1;
         std::cout << std::endl;
-        for (auto &rBridge: gBridges) {
+        for (auto &rBridge: gSectionBridges) {
             {
                 std::lock_guard<std::mutex> lock(gPrintMtx);
                 NetBridge::Stats lStats = rBridge.second->getStats();
