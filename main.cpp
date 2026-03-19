@@ -17,6 +17,15 @@ std::map<std::string, NetBridge::Config> gSectionConfigs;  // section → config
 std::string gConfigFilePath;
 std::atomic<bool> gReloadConfig(false);
 
+// Helper function to extract display name from section name (remove "config_" or "flow_" prefix)
+std::string getDisplayName(const std::string& sectionName) {
+    size_t pos = sectionName.find('_');
+    if (pos != std::string::npos) {
+        return sectionName.substr(pos + 1);
+    }
+    return sectionName;
+}
+
 // Helper function to parse and add a config section
 bool addConfigSection(INI &rConfigs, const std::string &sectionName) {
     try {
@@ -41,7 +50,7 @@ bool addConfigSection(INI &rConfigs, const std::string &sectionName) {
         lConfig.mSingleSender = !singleSenderString.empty() && singleSenderString == "true" ? true : false;
         
         lConfig.mStreamId = rConfigs[sectionName]["stream_id"];
-        std::cout << "Config " << sectionName << " stream_id: '" << lConfig.mStreamId << "'" << std::endl;
+        std::cout << getDisplayName(sectionName) << " stream_id: '" << lConfig.mStreamId << "'" << std::endl;
         
         std::string tagString = rConfigs[sectionName]["tag"];
         if (!tagString.empty()) {
@@ -65,7 +74,7 @@ bool addConfigSection(INI &rConfigs, const std::string &sectionName) {
             // Create a new bridge and start the SRT server
             auto newBridge = std::make_shared<NetBridge>();
             if (!newBridge->startBridge(lConfig)) {
-                std::cout << "Failed starting bridge using config: " << sectionName << std::endl;
+                std::cout << "Failed starting bridge using config: " << getDisplayName(sectionName) << std::endl;
                 return false;
             }
             std::cout << "Started new bridge on " << lConfig.mListenIp << ":" << lConfig.mListenPort << std::endl;
@@ -81,7 +90,7 @@ bool addConfigSection(INI &rConfigs, const std::string &sectionName) {
         gSectionConfigs[sectionName] = lConfig;  // Save config for later removal
         return true;
     } catch (const std::exception &e) {
-        std::cout << "Error parsing config section " << sectionName << ": " << e.what() << std::endl;
+        std::cout << "Error parsing config section " << getDisplayName(sectionName) << ": " << e.what() << std::endl;
         return false;
     }
 }
@@ -98,21 +107,21 @@ bool addFlowSection(INI &rConfigs, const std::string &sectionName) {
         lConfig.mOutPort = std::stoi(rConfigs[sectionName]["out_port"]);
         lConfig.mOutIp = rConfigs[sectionName]["out_ip"];
         lConfig.mStreamId = rConfigs[sectionName]["stream_id"];
-        std::cout << "Flow " << sectionName << " stream_id: '" << lConfig.mStreamId << "'" << std::endl;
+        std::cout << getDisplayName(sectionName) << " stream_id: '" << lConfig.mStreamId << "'" << std::endl;
         
         std::string tagString = rConfigs[sectionName]["tag"];
         if (!tagString.empty()) {
             lConfig.mMode = NetBridge::Mode::MPSRTTS;
             lConfig.mTag = std::stoi(tagString);
         } else {
-            std::cout << "Tag missing: " << sectionName << std::endl;
+            std::cout << "Tag missing: " << getDisplayName(sectionName) << std::endl;
             return false;
         }
         gSectionBridges[lBindKey]->addInterface(lConfig);
         gSectionConfigs[sectionName] = lConfig;  // Save config for later removal
         return true;
     } catch (const std::exception &e) {
-        std::cout << "Error parsing flow section " << sectionName << ": " << e.what() << std::endl;
+        std::cout << "Error parsing flow section " << getDisplayName(sectionName) << ": " << e.what() << std::endl;
         return false;
     }
 }
@@ -220,7 +229,7 @@ bool reloadConfigFile() {
             }
         }
         
-        std::cout << "Removed section: " << sectionName << std::endl;
+        std::cout << "Removed section: " << getDisplayName(sectionName) << std::endl;
         sectionsRemoved++;
     }
     
