@@ -66,6 +66,7 @@ bool addConfigSection(INI &rConfigs, const std::string &sectionName) {
                 std::cout << "Failed starting bridge using config: " << sectionName << std::endl;
                 return false;
             }
+            std::cout << "Started new bridge on " << lConfig.mListenIp << ":" << lConfig.mListenPort << std::endl;
             targetBridge = newBridge;
             gBridgesByEndpoint[endpointKey] = targetBridge;
         } else {
@@ -258,25 +259,34 @@ int main(int argc, char *argv[]) {
     std::cout << "SIGHUP handler registered. Use 'systemctl reload srt-to-udp-server' to reload config." << std::endl;
 
     bool running = true;
+    uint64_t loopCounter = 0;
+    
     while (running) {
-        // Check if config reload was requested
-        if (gReloadConfig) {
-            gReloadConfig = false;
-            if (!reloadConfigFile()) {
-                std::cout << "Warning: Configuration reload had errors, but continuing with current config." << std::endl;
+        // Check if config reload was requested (every 10s)
+        if (loopCounter % 10 == 0) {
+            if (gReloadConfig) {
+                gReloadConfig = false;
+                if (!reloadConfigFile()) {
+                    std::cout << "Warning: Configuration reload had errors, but continuing with current config." << std::endl;
+                }
             }
         }
         
         std::this_thread::sleep_for(std::chrono::seconds(1));
-        uint64_t lConnectionCounter = 1;
-        std::cout << std::endl;
-        for (auto &rBridge: gBridgesByEndpoint) {
-            NetBridge::Stats lStats=rBridge.second->getStats();
-            std::cout << "Connection " << unsigned(lConnectionCounter);
-            std::cout << " Port: " << unsigned(rBridge.first.second);
-            std::cout << " Clients: " << unsigned(lStats.mConnections);
-            std::cout << " packetCounter: " << unsigned(lStats.mPacketCounter) << std::endl;
-            lConnectionCounter ++;
+        loopCounter++;
+        
+        // Print stats every 60s
+        if (loopCounter % 60 == 0) {
+            uint64_t lConnectionCounter = 1;
+            std::cout << std::endl;
+            for (auto &rBridge: gBridgesByEndpoint) {
+                NetBridge::Stats lStats=rBridge.second->getStats();
+                std::cout << "Connection " << unsigned(lConnectionCounter);
+                std::cout << " Port: " << unsigned(rBridge.first.second);
+                std::cout << " Clients: " << unsigned(lStats.mConnections);
+                std::cout << " packetCounter: " << unsigned(lStats.mPacketCounter) << std::endl;
+                lConnectionCounter ++;
+            }
         }
     }
 
