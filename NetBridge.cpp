@@ -79,17 +79,22 @@ bool NetBridge::handleDataMPEGTS(std::unique_ptr <std::vector<uint8_t>> &rConten
     
     // Route packet to the correct UDP destination based on stream ID
     for (auto &rConnection: mConnections) {
-        // Match by stream ID if specified, otherwise use first connection (backward compatible)
-        if (rConnection.mStreamId.empty() || rConnection.mStreamId == streamId) {
-            rConnection.mNetOut->send((const std::byte *)rContent->data(), rContent->size());
-            return true;
+        // If connection requires a specific stream ID, match it exactly
+        if (!rConnection.mStreamId.empty()) {
+            if (rConnection.mStreamId == streamId) {
+                rConnection.mNetOut->send((const std::byte *)rContent->data(), rContent->size());
+                return true;
+            }
+        } else {
+            // Connection has no stream ID requirement, accept any packet with no stream ID
+            if (streamId.empty()) {
+                rConnection.mNetOut->send((const std::byte *)rContent->data(), rContent->size());
+                return true;
+            }
         }
     }
     
-    // Fallback: send to first connection if no stream ID match
-    if (!mConnections.empty()) {
-        mConnections[0].mNetOut->send((const std::byte *)rContent->data(), rContent->size());
-    }
+    // No matching connection found: discard packet to avoid corrupting valid data
     return true;
 }
 
