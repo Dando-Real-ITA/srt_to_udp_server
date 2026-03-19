@@ -188,6 +188,33 @@ bool NetBridge::addInterface(Config &rConfig) {
     return true;
 }
 
+bool NetBridge::removeInterface(const std::string &streamId, uint8_t tag) {
+    auto it = mConnections.begin();
+    while (it != mConnections.end()) {
+        // Match by stream ID if provided (non-empty), otherwise match by tag
+        if (!streamId.empty()) {
+            if (it->mStreamId == streamId) {
+                it = mConnections.erase(it);
+                return true;
+            } else {
+                ++it;
+            }
+        } else {
+            if (it->tag == tag) {
+                it = mConnections.erase(it);
+                return true;
+            } else {
+                ++it;
+            }
+        }
+    }
+    return false;  // Connection not found
+}
+
+bool NetBridge::hasActiveInterfaces() const {
+    return !mConnections.empty();
+}
+
 NetBridge::Stats NetBridge::getStats() {
     NetBridge::Stats lStats;
     lStats.mPacketCounter = mPacketCounter;

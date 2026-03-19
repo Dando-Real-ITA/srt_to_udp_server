@@ -175,6 +175,26 @@ bool reloadConfigFile() {
     
     for (const auto &sectionName: sectionsToRemove) {
         auto bridgePtr = gSectionBridges[sectionName];
+        
+        // Extract stream_id and tag from the removed section BEFORE erasing it
+        std::string removedStreamId;
+        uint8_t removedTag = 0;
+        try {
+            // Try to get stream_id if it exists
+            if (ini.sections[sectionName]->count("stream_id") > 0) {
+                removedStreamId = ini[sectionName]["stream_id"];
+            }
+            // Try to get tag if it exists
+            if (ini.sections[sectionName]->count("tag") > 0) {
+                std::string tagStr = ini[sectionName]["tag"];
+                if (!tagStr.empty()) {
+                    removedTag = std::stoi(tagStr);
+                }
+            }
+        } catch (const std::exception &e) {
+            std::cout << "Warning: Could not extract stream_id/tag from removed section " << sectionName << std::endl;
+        }
+        
         gSectionBridges.erase(sectionName);
         
         // Check if this bridge is still referenced by other sections
@@ -194,6 +214,15 @@ bool reloadConfigFile() {
                     bridgePtr->stopBridge();
                     gBridgesByEndpoint.erase(it);
                     break;
+                }
+            }
+        } else {
+            // Bridge is still in use by other sections, just remove this interface
+            if (bridgePtr->removeInterface(removedStreamId, removedTag)) {
+                if (!removedStreamId.empty()) {
+                    std::cout << "Removed interface with stream_id: " << removedStreamId << std::endl;
+                } else {
+                    std::cout << "Removed interface with tag: " << static_cast<int>(removedTag) << std::endl;
                 }
             }
         }

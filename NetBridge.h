@@ -50,6 +50,8 @@ public:
     bool startBridge(Config &rConfig);
     void stopBridge();
     bool addInterface(Config &rConfig);
+    bool removeInterface(const std::string &streamId, uint8_t tag);
+    bool hasActiveInterfaces() const;
     std::shared_ptr<SRTNet::NetworkConnection> validateConnection(struct sockaddr &sin, SRTSOCKET newSocket, std::shared_ptr<SRTNet::NetworkConnection> &ctx);
     void handleClientDisconnect(std::shared_ptr<SRTNet::NetworkConnection>& ctx, SRTSOCKET socket);
     bool handleDataMPEGTS(std::unique_ptr <std::vector<uint8_t>> &content, SRT_MSGCTRL &msgCtrl, std::shared_ptr<SRTNet::NetworkConnection> ctx, SRTSOCKET clientHandle);
