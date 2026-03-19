@@ -1,6 +1,7 @@
 #include <iostream>
 #include <signal.h>
 #include <atomic>
+#include <set>
 
 #include "INI.h"
 #include "NetBridge.h"
@@ -153,7 +154,55 @@ bool reloadConfigFile() {
     bool reloadSuccess = true;
     int newConfigsAdded = 0;
     int newInterfacesAdded = 0;
+    int sectionsRemoved = 0;
     
+    // Track which sections are in the new config
+    std::set<std::string> newSections;
+    for (auto &rSection: ini.sections) {
+        std::string sectionName = rSection.first;
+        if (sectionName.find("config") != std::string::npos || sectionName.find("flow") != std::string::npos) {
+            newSections.insert(sectionName);
+        }
+    }
+    
+    // Remove sections that are no longer in the config
+    std::vector<std::string> sectionsToRemove;
+    for (auto &rSection: gSectionBridges) {
+        if (newSections.find(rSection.first) == newSections.end()) {
+            sectionsToRemove.push_back(rSection.first);
+        }
+    }
+    
+    for (const auto &sectionName: sectionsToRemove) {
+        auto bridgePtr = gSectionBridges[sectionName];
+        gSectionBridges.erase(sectionName);
+        
+        // Check if this bridge is still referenced by other sections
+        bool bridgeStillInUse = false;
+        for (auto &rSection: gSectionBridges) {
+            if (rSection.second == bridgePtr) {
+                bridgeStillInUse = true;
+                break;
+            }
+        }
+        
+        if (!bridgeStillInUse) {
+            // Find and remove this bridge from gBridgesByEndpoint
+            for (auto it = gBridgesByEndpoint.begin(); it != gBridgesByEndpoint.end(); ++it) {
+                if (it->second == bridgePtr) {
+                    std::cout << "Stopping bridge on " << it->first.first << ":" << it->first.second << std::endl;
+                    bridgePtr->stopBridge();
+                    gBridgesByEndpoint.erase(it);
+                    break;
+                }
+            }
+        }
+        
+        std::cout << "Removed section: " << sectionName << std::endl;
+        sectionsRemoved++;
+    }
+    
+    // Add new sections from config
     for (auto &rSection: ini.sections) {
         std::string sectionName = rSection.first;
         if (sectionName.find("config") != std::string::npos) {
@@ -183,8 +232,8 @@ bool reloadConfigFile() {
     }
     
     if (reloadSuccess) {
-        std::cout << "Configuration reload complete. Added " << newConfigsAdded << " new bridges and " 
-                  << newInterfacesAdded << " new interfaces." << std::endl;
+        std::cout << "Configuration reload complete. Added " << newConfigsAdded << " new bridges, " 
+                  << newInterfacesAdded << " new interfaces, and removed " << sectionsRemoved << " sections." << std::endl;
     }
     
     return reloadSuccess;
