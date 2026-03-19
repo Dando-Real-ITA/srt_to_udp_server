@@ -41,6 +41,28 @@ std::shared_ptr<SRTNet::NetworkConnection> NetBridge::validateConnection(struct 
         std::string streamId(streamIdBuffer, streamIdLen);
         std::cout << "Client stream ID: '" << streamId << "'" << std::endl;
         
+        // Validate that this stream_id is registered in our configuration
+        bool streamIdRegistered = false;
+        bool hasCatchAll = false;
+        
+        for (const auto &rConnection: mConnections) {
+            // Check if there's a matching stream_id
+            if (!rConnection.mStreamId.empty() && rConnection.mStreamId == streamId) {
+                streamIdRegistered = true;
+                break;
+            }
+            // Check if there's a catch-all interface (empty stream_id requirement)
+            if (rConnection.mStreamId.empty()) {
+                hasCatchAll = true;
+            }
+        }
+        
+        // Reject connection if stream_id is not registered and no catch-all exists
+        if (!streamIdRegistered && !hasCatchAll) {
+            std::cout << "Rejecting connection: stream_id '" << streamId << "' is not registered" << std::endl;
+            return nullptr;
+        }
+        
         // Store stream ID in connection context
         auto ctx = std::make_shared<ConnectionContext>();
         ctx->streamId = streamId;

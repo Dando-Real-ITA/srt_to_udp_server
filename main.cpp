@@ -13,6 +13,7 @@
 
 std::map<std::string, std::shared_ptr<NetBridge>> gSectionBridges;  // section → bridge
 std::map<std::pair<std::string, uint16_t>, std::shared_ptr<NetBridge>> gBridgesByEndpoint; // (ip:port) → bridge
+std::map<std::string, NetBridge::Config> gSectionConfigs;  // section → config (for removal)
 std::string gConfigFilePath;
 std::atomic<bool> gReloadConfig(false);
 
@@ -77,6 +78,7 @@ bool addConfigSection(INI &rConfigs, const std::string &sectionName) {
         
         // Step 5: Store the config mapping for this sectionName
         gSectionBridges[sectionName] = targetBridge;
+        gSectionConfigs[sectionName] = lConfig;  // Save config for later removal
         return true;
     } catch (const std::exception &e) {
         std::cout << "Error parsing config section " << sectionName << ": " << e.what() << std::endl;
@@ -107,6 +109,7 @@ bool addFlowSection(INI &rConfigs, const std::string &sectionName) {
             return false;
         }
         gSectionBridges[lBindKey]->addInterface(lConfig);
+        gSectionConfigs[sectionName] = lConfig;  // Save config for later removal
         return true;
     } catch (const std::exception &e) {
         std::cout << "Error parsing flow section " << sectionName << ": " << e.what() << std::endl;
@@ -176,23 +179,13 @@ bool reloadConfigFile() {
     for (const auto &sectionName: sectionsToRemove) {
         auto bridgePtr = gSectionBridges[sectionName];
         
-        // Extract stream_id and tag from the removed section BEFORE erasing it
+        // Extract stream_id and tag from saved config (not from the new ini which doesn't have the removed section)
         std::string removedStreamId;
         uint8_t removedTag = 0;
-        try {
-            // Try to get stream_id if it exists
-            if (ini.sections[sectionName]->count("stream_id") > 0) {
-                removedStreamId = ini[sectionName]["stream_id"];
-            }
-            // Try to get tag if it exists
-            if (ini.sections[sectionName]->count("tag") > 0) {
-                std::string tagStr = ini[sectionName]["tag"];
-                if (!tagStr.empty()) {
-                    removedTag = std::stoi(tagStr);
-                }
-            }
-        } catch (const std::exception &e) {
-            std::cout << "Warning: Could not extract stream_id/tag from removed section " << sectionName << std::endl;
+        if (gSectionConfigs.find(sectionName) != gSectionConfigs.end()) {
+            removedStreamId = gSectionConfigs[sectionName].mStreamId;
+            removedTag = gSectionConfigs[sectionName].mTag;
+            gSectionConfigs.erase(sectionName);  // Clean up the saved config
         }
         
         gSectionBridges.erase(sectionName);
