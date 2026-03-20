@@ -106,7 +106,7 @@ bool NetBridge::handleDataMPEGTS(std::unique_ptr <std::vector<uint8_t>> &rConten
     }
     
     // Route packet to the correct destination based on stream ID
-    for (const auto &rConnection: mConnections) {
+    for (auto &rConnection: mConnections) {
         // If connection requires a specific stream ID, match it exactly
         if (!rConnection.mStreamId.empty()) {
             if (rConnection.mStreamId == streamId) {
@@ -155,7 +155,7 @@ bool NetBridge::handleDataMPSRTTS(std::unique_ptr <std::vector<uint8_t>> &rConte
             }
             //Send to what destination
             uint8_t tag = rPackets.first;
-            for (const auto &rConnection: mConnections) {
+            for (auto &rConnection: mConnections) {
                 if (rConnection.tag == tag) {
                     sendData(rConnection, lSendData.data(), lSendData.size());
                 }
