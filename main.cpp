@@ -71,10 +71,15 @@ bool addConfigSection(INI &rConfigs, const std::string &sectionName) {
         NetBridge::Config lConfig;
         lConfig.mListenPort = std::stoi(rConfigs[sectionName]["listen_port"]);
         lConfig.mListenIp = rConfigs[sectionName]["listen_ip"];
-        lConfig.mOutPort = std::stoi(rConfigs[sectionName]["out_port"]);
+        
+        std::string outPortString = rConfigs[sectionName]["out_port"];
+        lConfig.mOutPort = !outPortString.empty() ? std::stoi(outPortString) : 0;
+        
         lConfig.mOutIp = rConfigs[sectionName]["out_ip"];
         lConfig.mPsk = rConfigs[sectionName]["key"];
-        lConfig.mReorder = std::stoi(rConfigs[sectionName]["reorder_distance"]);
+        
+        std::string reorderString = rConfigs[sectionName]["reorder_distance"];
+        lConfig.mReorder = !reorderString.empty() ? std::stoi(reorderString) : 4;
         
         std::string latencyString = rConfigs[sectionName]["latency"];
         lConfig.mLatency = !latencyString.empty() ? std::stoi(latencyString) : 1000;
@@ -151,7 +156,10 @@ bool addFlowSection(INI &rConfigs, const std::string &sectionName) {
         }
         
         NetBridge::Config lConfig;
-        lConfig.mOutPort = std::stoi(rConfigs[sectionName]["out_port"]);
+        
+        std::string outPortString = rConfigs[sectionName]["out_port"];
+        lConfig.mOutPort = !outPortString.empty() ? std::stoi(outPortString) : 0;
+        
         lConfig.mOutIp = rConfigs[sectionName]["out_ip"];
         lConfig.mStreamId = rConfigs[sectionName]["stream_id"];
         std::cout << getDisplayName(sectionName) << " stream_id: '" << lConfig.mStreamId << "'" << std::endl;
