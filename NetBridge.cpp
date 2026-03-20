@@ -335,18 +335,36 @@ bool NetBridge::createAndOpenFifos(const std::vector<std::string> &fifoPaths, st
     return true;
 }
 
-// Write data to FIFO
-bool NetBridge::writeFifo(int fifoFd, const uint8_t *data, size_t size) {
+// Write data to FIFO, reopening if reader disconnected
+bool NetBridge::writeFifo(int &fifoFd, const std::string &fifoPath, const uint8_t *data, size_t size) {
     if (fifoFd == -1 || data == nullptr || size == 0) {
         return false;
     }
     
     ssize_t written = write(fifoFd, data, size);
     if (written == -1) {
-        // Silent handling for expected FIFO errors:
+        if (errno == EPIPE) {
+            // Reader disconnected - close old FD and reopen for new readers
+            close(fifoFd);
+            fifoFd = open(fifoPath.c_str(), O_WRONLY | O_NONBLOCK);
+            if (fifoFd == -1) {
+                // Reopen failed - no reader yet, which is fine for non-blocking FIFO
+                return true;  // Silent fail
+            }
+            // Try writing again with fresh FD
+            written = write(fifoFd, data, size);
+            if (written == -1) {
+                // Still failed, handle as EAGAIN/EWOULDBLOCK (no reader yet)
+                if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EPIPE) {
+                    return false;  // Real error
+                }
+                return true;  // No reader yet, will retry next packet
+            }
+            return written == (ssize_t)size;
+        }
+        // Silent handling for other expected FIFO errors:
         // - EAGAIN/EWOULDBLOCK: no reader yet (non-blocking write)
-        // - EPIPE: reader closed connection (will reconnect)
-        if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EPIPE) {
+        if (errno != EAGAIN && errno != EWOULDBLOCK) {
             std::cout << "Error writing to FIFO: " << strerror(errno) << std::endl;
             return false;
         }
@@ -376,9 +394,10 @@ void NetBridge::sendData(const Connection &conn, const uint8_t *data, size_t siz
     }
     
     if (conn.mOutputType == OutputType::FIFO || conn.mOutputType == OutputType::BOTH) {
-        for (int fifoFd : conn.mFifoFds) {
-            if (fifoFd != -1) {
-                writeFifo(fifoFd, data, size);
+        // Write to all FIFOs using indices to access both FD and path
+        for (size_t i = 0; i < conn.mFifoFds.size() && i < conn.mFifoPaths.size(); ++i) {
+            if (conn.mFifoFds[i] != -1) {
+                writeFifo(conn.mFifoFds[i], conn.mFifoPaths[i], data, size);
             }
         }
     }

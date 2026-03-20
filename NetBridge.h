@@ -31,7 +31,7 @@ public:
 
     struct Connection {
         std::shared_ptr<kissnet::udp_socket> mNetOut = nullptr;
-        std::vector<int> mFifoFds;  // File descriptors for multiple FIFOs
+        mutable std::vector<int> mFifoFds;  // File descriptors for multiple FIFOs (mutable for reopening)
         std::vector<std::string> mFifoPaths;  // Paths to FIFO files
         OutputType mOutputType = OutputType::UDP;
         uint8_t tag = 0;
@@ -84,7 +84,7 @@ private:
     
     // Helper methods for FIFO handling
     bool createAndOpenFifos(const std::vector<std::string> &fifoPaths, std::vector<int> &fifoFds);
-    bool writeFifo(int fifoFd, const uint8_t *data, size_t size);
+    bool writeFifo(int &fifoFd, const std::string &fifoPath, const uint8_t *data, size_t size);
     void closeFifos(std::vector<int> &fifoFds);
     void sendData(const Connection &conn, const uint8_t *data, size_t size);
 
