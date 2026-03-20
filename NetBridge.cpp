@@ -3,6 +3,12 @@
 //
 
 #include "NetBridge.h"
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <cstring>
+#include <iostream>
+#include <errno.h>
 
 //Return a connection object. (Return nullptr if you don't want to connect to that client)
 std::shared_ptr<SRTNet::NetworkConnection> NetBridge::validateConnection(struct sockaddr &rSin, SRTSOCKET lNewSocket, std::shared_ptr<SRTNet::NetworkConnection> &rCtx) {
@@ -99,18 +105,18 @@ bool NetBridge::handleDataMPEGTS(std::unique_ptr <std::vector<uint8_t>> &rConten
         }
     }
     
-    // Route packet to the correct UDP destination based on stream ID
-    for (auto &rConnection: mConnections) {
+    // Route packet to the correct destination based on stream ID
+    for (const auto &rConnection: mConnections) {
         // If connection requires a specific stream ID, match it exactly
         if (!rConnection.mStreamId.empty()) {
             if (rConnection.mStreamId == streamId) {
-                rConnection.mNetOut->send((const std::byte *)rContent->data(), rContent->size());
+                sendData(rConnection, rContent->data(), rContent->size());
                 return true;
             }
         } else {
             // Connection has no stream ID requirement, accept any packet with no stream ID
             if (streamId.empty()) {
-                rConnection.mNetOut->send((const std::byte *)rContent->data(), rContent->size());
+                sendData(rConnection, rContent->data(), rContent->size());
                 return true;
             }
         }
@@ -149,9 +155,9 @@ bool NetBridge::handleDataMPSRTTS(std::unique_ptr <std::vector<uint8_t>> &rConte
             }
             //Send to what destination
             uint8_t tag = rPackets.first;
-            for (auto &rConnection: mConnections) {
+            for (const auto &rConnection: mConnections) {
                 if (rConnection.tag == tag) {
-                    rConnection.mNetOut->send((const std::byte *)lSendData.data(), lSendData.size());
+                    sendData(rConnection, lSendData.data(), lSendData.size());
                 }
             }
         }
@@ -184,7 +190,24 @@ bool NetBridge::startBridge(Config &rConfig) {
 
     //Add the output connection
     Connection lConnection;
-    lConnection.mNetOut = std::make_shared<kissnet::udp_socket>(kissnet::endpoint(rConfig.mOutIp, rConfig.mOutPort));
+    lConnection.mOutputType = rConfig.mOutputType;
+    
+    // Configure UDP if needed
+    if (rConfig.mOutputType == OutputType::UDP || rConfig.mOutputType == OutputType::BOTH) {
+        lConnection.mNetOut = std::make_shared<kissnet::udp_socket>(kissnet::endpoint(rConfig.mOutIp, rConfig.mOutPort));
+    }
+    
+    // Configure FIFOs if needed
+    if (rConfig.mOutputType == OutputType::FIFO || rConfig.mOutputType == OutputType::BOTH) {
+        if (!rConfig.mFifoPaths.empty()) {
+            if (!createAndOpenFifos(rConfig.mFifoPaths, lConnection.mFifoFds)) {
+                std::cout << "Failed to create FIFO(s)" << std::endl;
+                return false;
+            }
+            lConnection.mFifoPaths = rConfig.mFifoPaths;
+        }
+    }
+    
     if (rConfig.mMode == Mode::MPSRTTS) {
         lConnection.tag = rConfig.mTag;
     }
@@ -203,7 +226,24 @@ bool NetBridge::addInterface(Config &rConfig) {
     }
     //Add the output connection
     Connection lConnection;
-    lConnection.mNetOut = std::make_shared<kissnet::udp_socket>(kissnet::endpoint(rConfig.mOutIp, rConfig.mOutPort));
+    lConnection.mOutputType = rConfig.mOutputType;
+    
+    // Configure UDP if needed
+    if (rConfig.mOutputType == OutputType::UDP || rConfig.mOutputType == OutputType::BOTH) {
+        lConnection.mNetOut = std::make_shared<kissnet::udp_socket>(kissnet::endpoint(rConfig.mOutIp, rConfig.mOutPort));
+    }
+    
+    // Configure FIFOs if needed
+    if (rConfig.mOutputType == OutputType::FIFO || rConfig.mOutputType == OutputType::BOTH) {
+        if (!rConfig.mFifoPaths.empty()) {
+            if (!createAndOpenFifos(rConfig.mFifoPaths, lConnection.mFifoFds)) {
+                std::cout << "Failed to create FIFO(s)" << std::endl;
+                return false;
+            }
+            lConnection.mFifoPaths = rConfig.mFifoPaths;
+        }
+    }
+    
     lConnection.tag = rConfig.mTag;
     lConnection.mStreamId = rConfig.mStreamId;  // Store stream ID for routing
     mConnections.push_back(lConnection);
@@ -247,3 +287,98 @@ NetBridge::Stats NetBridge::getStats() {
     );
     return lStats;
 }
+
+// Create multiple FIFOs (named pipes) and open them for writing
+bool NetBridge::createAndOpenFifos(const std::vector<std::string> &fifoPaths, std::vector<int> &fifoFds) {
+    fifoFds.clear();
+    
+    for (const auto &fifoPath : fifoPaths) {
+        if (fifoPath.empty()) {
+            continue;
+        }
+        
+        // Check if FIFO already exists
+        struct stat buffer;
+        if (stat(fifoPath.c_str(), &buffer) == 0) {
+            // File exists, try to open it
+            int fd = open(fifoPath.c_str(), O_WRONLY | O_NONBLOCK);
+            if (fd == -1) {
+                std::cout << "Failed to open existing FIFO: " << fifoPath << " - " << strerror(errno) << std::endl;
+                closeFifos(fifoFds);
+                return false;
+            }
+            std::cout << "Opened existing FIFO: " << fifoPath << std::endl;
+            fifoFds.push_back(fd);
+            continue;
+        }
+        
+        // Create new FIFO
+        if (mkfifo(fifoPath.c_str(), 0666) == -1) {
+            std::cout << "Failed to create FIFO: " << fifoPath << " - " << strerror(errno) << std::endl;
+            closeFifos(fifoFds);
+            return false;
+        }
+        
+        // Open the FIFO for writing (non-blocking)
+        int fd = open(fifoPath.c_str(), O_WRONLY | O_NONBLOCK);
+        if (fd == -1) {
+            std::cout << "Failed to open FIFO for writing: " << fifoPath << " - " << strerror(errno) << std::endl;
+            unlink(fifoPath.c_str());
+            closeFifos(fifoFds);
+            return false;
+        }
+        
+        std::cout << "Created and opened FIFO: " << fifoPath << std::endl;
+        fifoFds.push_back(fd);
+    }
+    
+    return true;
+}
+
+// Write data to FIFO
+bool NetBridge::writeFifo(int fifoFd, const uint8_t *data, size_t size) {
+    if (fifoFd == -1 || data == nullptr || size == 0) {
+        return false;
+    }
+    
+    ssize_t written = write(fifoFd, data, size);
+    if (written == -1) {
+        // EAGAIN means no reader, which is acceptable for a FIFO
+        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            std::cout << "Error writing to FIFO: " << strerror(errno) << std::endl;
+            return false;
+        }
+        return true;  // Silent fail for EAGAIN
+    }
+    
+    return written == (ssize_t)size;
+}
+
+// Close all FIFO file descriptors
+void NetBridge::closeFifos(std::vector<int> &fifoFds) {
+    for (auto &fd : fifoFds) {
+        if (fd != -1) {
+            close(fd);
+            fd = -1;
+        }
+    }
+    fifoFds.clear();
+}
+
+// Send data to connection (UDP and/or FIFO)
+void NetBridge::sendData(const Connection &conn, const uint8_t *data, size_t size) {
+    if (conn.mOutputType == OutputType::UDP || conn.mOutputType == OutputType::BOTH) {
+        if (conn.mNetOut) {
+            conn.mNetOut->send((const std::byte *)data, size);
+        }
+    }
+    
+    if (conn.mOutputType == OutputType::FIFO || conn.mOutputType == OutputType::BOTH) {
+        for (int fifoFd : conn.mFifoFds) {
+            if (fifoFd != -1) {
+                writeFifo(fifoFd, data, size);
+            }
+        }
+    }
+}
+

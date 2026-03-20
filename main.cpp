@@ -26,6 +26,39 @@ std::string getDisplayName(const std::string& sectionName) {
     return sectionName;
 }
 
+// Helper function to parse comma-separated FIFO paths
+std::vector<std::string> parseFifoPaths(const std::string& fifoPathString) {
+    std::vector<std::string> paths;
+    if (fifoPathString.empty()) {
+        return paths;
+    }
+    
+    size_t start = 0;
+    size_t end = fifoPathString.find(',');
+    
+    while (end != std::string::npos) {
+        std::string path = fifoPathString.substr(start, end - start);
+        // Trim whitespace
+        path.erase(0, path.find_first_not_of(" \t\n\r"));
+        path.erase(path.find_last_not_of(" \t\n\r") + 1);
+        if (!path.empty()) {
+            paths.push_back(path);
+        }
+        start = end + 1;
+        end = fifoPathString.find(',', start);
+    }
+    
+    // Add the last path
+    std::string path = fifoPathString.substr(start);
+    path.erase(0, path.find_first_not_of(" \t\n\r"));
+    path.erase(path.find_last_not_of(" \t\n\r") + 1);
+    if (!path.empty()) {
+        paths.push_back(path);
+    }
+    
+    return paths;
+}
+
 // Helper function to parse and add a config section
 bool addConfigSection(INI &rConfigs, const std::string &sectionName) {
     try {
@@ -51,6 +84,20 @@ bool addConfigSection(INI &rConfigs, const std::string &sectionName) {
         
         lConfig.mStreamId = rConfigs[sectionName]["stream_id"];
         std::cout << getDisplayName(sectionName) << " stream_id: '" << lConfig.mStreamId << "'" << std::endl;
+        
+        // Parse output_type (default: UDP)
+        std::string outputTypeString = rConfigs[sectionName]["output_type"];
+        if (outputTypeString == "fifo") {
+            lConfig.mOutputType = NetBridge::OutputType::FIFO;
+        } else if (outputTypeString == "both") {
+            lConfig.mOutputType = NetBridge::OutputType::BOTH;
+        } else {
+            lConfig.mOutputType = NetBridge::OutputType::UDP;  // Default to UDP
+        }
+        
+        // Parse comma-separated fifo_paths if output_type includes FIFO
+        std::string fifoPathString = rConfigs[sectionName]["fifo_paths"];
+        lConfig.mFifoPaths = parseFifoPaths(fifoPathString);
         
         std::string tagString = rConfigs[sectionName]["tag"];
         if (!tagString.empty()) {
@@ -108,6 +155,20 @@ bool addFlowSection(INI &rConfigs, const std::string &sectionName) {
         lConfig.mOutIp = rConfigs[sectionName]["out_ip"];
         lConfig.mStreamId = rConfigs[sectionName]["stream_id"];
         std::cout << getDisplayName(sectionName) << " stream_id: '" << lConfig.mStreamId << "'" << std::endl;
+        
+        // Parse output_type (default: UDP)
+        std::string outputTypeString = rConfigs[sectionName]["output_type"];
+        if (outputTypeString == "fifo") {
+            lConfig.mOutputType = NetBridge::OutputType::FIFO;
+        } else if (outputTypeString == "both") {
+            lConfig.mOutputType = NetBridge::OutputType::BOTH;
+        } else {
+            lConfig.mOutputType = NetBridge::OutputType::UDP;  // Default to UDP
+        }
+        
+        // Parse comma-separated fifo_paths if output_type includes FIFO
+        std::string fifoPathString = rConfigs[sectionName]["fifo_paths"];
+        lConfig.mFifoPaths = parseFifoPaths(fifoPathString);
         
         std::string tagString = rConfigs[sectionName]["tag"];
         if (!tagString.empty()) {

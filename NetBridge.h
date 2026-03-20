@@ -7,6 +7,7 @@
 
 #include "SRTNet.h"
 #include "kissnet.hpp"
+#include <fstream>
 #define MTU 1456 //SRT-max
 
 // Helper struct to store connection-specific data
@@ -22,10 +23,22 @@ public:
         MPSRTTS //Multiplexed MPEG-TS (SPTS / MPTS) to one SRT stream
     };
 
+    enum OutputType: uint8_t {
+        UDP,
+        FIFO,
+        BOTH
+    };
+
     struct Connection {
         std::shared_ptr<kissnet::udp_socket> mNetOut = nullptr;
+        std::vector<int> mFifoFds;  // File descriptors for multiple FIFOs
+        std::vector<std::string> mFifoPaths;  // Paths to FIFO files
+        OutputType mOutputType = OutputType::UDP;
         uint8_t tag = 0;
         std::string mStreamId = "";  // SRT stream ID for routing
+        
+        // Constructor
+        Connection() : mNetOut(nullptr), mFifoFds(), mFifoPaths(), mOutputType(OutputType::UDP), tag(0), mStreamId("") {}
     };
 
     struct Stats {
@@ -45,6 +58,8 @@ public:
         int mLatency = 1000;
         bool mSingleSender = false;
         std::string mStreamId = "";  // SRT stream ID (for stream-based routing)
+        OutputType mOutputType = OutputType::UDP;  // UDP, FIFO, or BOTH
+        std::vector<std::string> mFifoPaths = {};  // List of FIFO file paths for output
     };
 
     bool startBridge(Config &rConfig);
@@ -66,6 +81,12 @@ private:
     std::vector<Connection> mConnections;
     Mode mCurrentMode;
     std::map<uint8_t, std::vector<std::vector<uint8_t>>> mTSPackets;
+    
+    // Helper methods for FIFO handling
+    bool createAndOpenFifos(const std::vector<std::string> &fifoPaths, std::vector<int> &fifoFds);
+    bool writeFifo(int fifoFd, const uint8_t *data, size_t size);
+    void closeFifos(std::vector<int> &fifoFds);
+    void sendData(const Connection &conn, const uint8_t *data, size_t size);
 
 };
 
