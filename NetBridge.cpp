@@ -343,12 +343,14 @@ bool NetBridge::writeFifo(int fifoFd, const uint8_t *data, size_t size) {
     
     ssize_t written = write(fifoFd, data, size);
     if (written == -1) {
-        // EAGAIN means no reader, which is acceptable for a FIFO
-        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+        // Silent handling for expected FIFO errors:
+        // - EAGAIN/EWOULDBLOCK: no reader yet (non-blocking write)
+        // - EPIPE: reader closed connection (will reconnect)
+        if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EPIPE) {
             std::cout << "Error writing to FIFO: " << strerror(errno) << std::endl;
             return false;
         }
-        return true;  // Silent fail for EAGAIN
+        return true;  // Silent fail for these expected errors
     }
     
     return written == (ssize_t)size;
